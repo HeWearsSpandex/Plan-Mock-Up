@@ -43,15 +43,29 @@
     const visits = {};
     let activeLayer = null;
     let isDrawing = false;
+    let lastCircle = null;
 
-    // Helper: draw a semi-transparent circle at x,y
-    function drawCircle(x, y, color, size, opacity) {
+    // Convert hex color to RGBA string with given alpha
+    function hexToRgba(hex, alpha) {
+      const shorthandRegex = /^#?([a-f\d])([a-f\d])([a-f\d])$/i;
+      hex = hex.replace(shorthandRegex, function(m, r, g, b) {
+        return r + r + g + g + b + b;
+      });
+      const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+      const r = parseInt(result[1], 16);
+      const g = parseInt(result[2], 16);
+      const b = parseInt(result[3], 16);
+      return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+    }
+
+    // Helper: draw a semi-transparent circle at x,y using RGBA fill
+    function drawCircle(x, y, hexColor, size, opacity) {
+      const rgbaColor = hexToRgba(hexColor, opacity);
       const circle = new Konva.Circle({
         x,
         y,
         radius: size / 2,
-        fill: color,
-        opacity: opacity,
+        fill: rgbaColor,
         listening: false
       });
       activeLayer.add(circle);
@@ -100,24 +114,24 @@
       container.appendChild(lbl);
     }
 
-    // Drawing events: use circles for round nib with transparency
+    // Drawing events: circles with RGBA fills
     stage.on('mousedown touchstart', () => {
       if (!activeLayer || !bgImageKonva) return;
       isDrawing = true;
       const pos = stage.getPointerPosition();
-      const color = document.getElementById('colorPicker').value;
+      const colorHex = document.getElementById('colorPicker').value;
       const size = parseInt(document.getElementById('brushSize').value, 10);
       const opacity = parseFloat(document.getElementById('opacityPicker').value);
-      drawCircle(pos.x, pos.y, color, size, opacity);
+      drawCircle(pos.x, pos.y, colorHex, size, opacity);
     });
 
     stage.on('mousemove touchmove', () => {
       if (!isDrawing) return;
       const pos = stage.getPointerPosition();
-      const color = document.getElementById('colorPicker').value;
+      const colorHex = document.getElementById('colorPicker').value;
       const size = parseInt(document.getElementById('brushSize').value, 10);
       const opacity = parseFloat(document.getElementById('opacityPicker').value);
-      drawCircle(pos.x, pos.y, color, size, opacity);
+      drawCircle(pos.x, pos.y, colorHex, size, opacity);
     });
 
     stage.on('mouseup touchend', () => {
