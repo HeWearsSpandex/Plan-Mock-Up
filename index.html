@@ -2,25 +2,15 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Freehand Paintbrush Annotation with Layer Opacity</title>
+  <title>Freehand Paintbrush Annotation with Zoom</title>
   <script src="https://unpkg.com/konva@8.3.5/konva.min.js"></script>
   <style>
     html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; }
-    body { font-family: sans-serif; padding: 20px; }
-    #controls { margin-bottom: 10px; display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+    body { font-family: sans-serif; padding: 10px; box-sizing: border-box; }
+    #controls { margin-bottom: 10px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
     #controls input, #controls button { padding: 6px; }
     #toggles label { margin-right: 10px; }
-    #container {
-      border: 1px solid #ccc;
-      width: 1600px;
-      height: 900px;
-      cursor: crosshair;
-      touch-action: none;          /* prevent default touch scrolling/panning */
-      overscroll-behavior: contain; /* contain touch behavior inside canvas */
-      -ms-touch-action: none;
-      user-select: none;
-      -webkit-user-select: none;
-    }
+    #stage-container { border: 1px solid #ccc; width: 100vw; height: calc(100vh - 100px); touch-action: none; user-select: none; }
   </style>
 </head>
 <body>
@@ -32,19 +22,20 @@
     <label>Brush size: <input type="number" id="brushSize" value="30" min="1" max="200" style="width:60px;" /></label>
     <label>Opacity: <input type="range" id="opacityPicker" min="0.1" max="1" step="0.1" value="0.5" /></label>
     <button id="clearLayer" disabled>Clear Layer</button>
+    <button id="setOpacity" disabled>Set All Layers to 40%</button>
+    <button id="zoomIn">Zoom In</button>
+    <button id="zoomOut">Zoom Out</button>
+    <label>Zoom: <input type="range" id="zoomSlider" min="0.5" max="2" step="0.1" value="1" /></label>
     <div id="toggles"></div>
   </div>
-  <div id="container"></div>
+  <div id="stage-container"></div>
 
   <script>
-    const canvasW = 1600, canvasH = 900;
-    // prevent mobile scroll
-    document.body.addEventListener('touchmove', e => { e.preventDefault(); }, { passive: false });
-
-    const stage = new Konva.Stage({ container: 'container', width: canvasW, height: canvasH });
-    // disable default drag content on touch
-    stage.container().style.touchAction = 'none';
-
+    // Setup Konva stage and layers
+    const container = document.getElementById('stage-container');
+    const width = container.clientWidth;
+    const height = container.clientHeight;
+    const stage = new Konva.Stage({ container: 'stage-container', width, height });
     const bgLayer = new Konva.Layer();
     stage.add(bgLayer);
 
@@ -52,17 +43,34 @@
     const visits = {};
     let activeLayer = null;
     let drawing = false;
+    let scale = 1;
 
-    // Load background
+    // Helper: redraw stage scale
+    function setScale(newScale) {
+      scale = newScale;
+      stage.scale({ x: scale, y: scale });
+      stage.batchDraw();
+      zoomSlider.value = scale.toFixed(1);
+    }
+
+    // Zoom controls
+    const zoomInBtn = document.getElementById('zoomIn');
+    const zoomOutBtn = document.getElementById('zoomOut');
+    const zoomSlider = document.getElementById('zoomSlider');
+
+    zoomInBtn.addEventListener('click', () => setScale(Math.min(scale + 0.1, 2)));
+    zoomOutBtn.addEventListener('click', () => setScale(Math.max(scale - 0.1, 0.5)));
+    zoomSlider.addEventListener('input', e => setScale(parseFloat(e.target.value)));
+
+    // Load background image
     document.getElementById('bgInput').addEventListener('change', e => {
-      const file = e.target.files[0];
-      if (!file) return;
+      const file = e.target.files[0]; if (!file) return;
       const reader = new FileReader();
       reader.onload = evt => {
-        const img = new Image(); img.src = evt.target.result;
-        img.onload = () => {
+        const imgObj = new Image(); imgObj.src = evt.target.result;
+        imgObj.onload = () => {
           bgLayer.destroyChildren();
-          bgImage = new Konva.Image({ image: img, width: canvasW, height: canvasH, listening: false });
+          bgImage = new Konva.Image({ image: imgObj, width, height, listening: false });
           bgLayer.add(bgImage);
           stage.batchDraw();
           document.getElementById('visitName').disabled = false;
@@ -72,7 +80,7 @@
       reader.readAsDataURL(file);
     });
 
-    // New layer
+    // Create new annotation layer
     document.getElementById('newVisit').addEventListener('click', () => {
       const name = document.getElementById('visitName').value.trim();
       if (!name) return alert('Enter visit name');
@@ -83,10 +91,11 @@
       activeLayer = layer;
       addToggle(name);
       document.getElementById('clearLayer').disabled = false;
+      document.getElementById('setOpacity').disabled = false;
       document.getElementById('visitName').value = '';
     });
 
-    // Toggle checkbox
+    // Add toggle checkbox
     function addToggle(name) {
       const cont = document.getElementById('toggles');
       const chk = document.createElement('input'); chk.type = 'checkbox'; chk.id = `chk_${name}`; chk.checked = true;
@@ -96,16 +105,12 @@
       cont.appendChild(lbl);
     }
 
-    // Drawing
+    // Drawing events
     stage.on('mousedown touchstart', () => {
       if (!activeLayer || !bgImage) return;
-      drawing = true;
-      drawPoint();
+      drawing = true; drawPoint();
     });
-    stage.on('mousemove touchmove', () => {
-      if (!drawing) return;
-      drawPoint();
-    });
+    stage.on('mousemove touchmove', () => { if (drawing) drawPoint(); });
     stage.on('mouseup touchend', () => { drawing = false; });
 
     function drawPoint() {
@@ -113,15 +118,24 @@
       const color = document.getElementById('colorPicker').value;
       const size = parseInt(document.getElementById('brushSize').value, 10);
       const opacity = parseFloat(document.getElementById('opacityPicker').value);
-      const circ = new Konva.Circle({ x: pos.x, y: pos.y, radius: size/2, fill: color, opacity: opacity, listening: false });
-      activeLayer.add(circ);
-      activeLayer.batchDraw();
+      const circle = new Konva.Circle({ x: pos.x, y: pos.y, radius: size / 2, fill: color, opacity, listening: false });
+      activeLayer.add(circle);
+      stage.batchDraw();
     }
 
-    // Clear
+    // Clear layer
     document.getElementById('clearLayer').addEventListener('click', () => {
       if (activeLayer) { activeLayer.destroyChildren(); stage.batchDraw(); }
     });
+
+    // Set all layers to 40% opacity
+    document.getElementById('setOpacity').addEventListener('click', () => {
+      Object.values(visits).forEach(layer => layer.opacity(0.4));
+      stage.batchDraw();
+    });
+
+    // Initialize scale slider value
+    setScale(1);
   </script>
 </body>
 </html>
