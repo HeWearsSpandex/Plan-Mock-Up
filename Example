@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Freehand Paintbrush Annotation with Transparency</title>
+  <script src="https://unpkg.com/konva@8.3.5/konva.min.js"></script>
+  <style>
+    body { font-family: sans-serif; padding: 20px; }
+    #controls { margin-bottom: 10px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    #controls input, #controls button { padding: 6px; }
+    #toggles label { margin-right: 10px; }
+    /* Standard 16:9 canvas at 1600x900 */
+    #container { border: 1px solid #ccc; width: 1600px; height: 900px; cursor: crosshair; }
+  </style>
+</head>
+<body>
+  <div id="controls">
+    <input type="file" id="bgInput" accept="image/*" />
+    <input id="visitName" placeholder="Visit name (e.g. 2025-06-26)" disabled />
+    <button id="newVisit" disabled>New Visit Layer</button>
+    <label>Color:
+      <input type="color" id="colorPicker" value="#ff0000" />
+    </label>
+    <label>Brush size:
+      <input type="number" id="brushSize" value="30" min="1" max="200" style="width:60px;" />
+    </label>
+    <label>Opacity:
+      <input type="range" id="opacityPicker" min="0.1" max="1" step="0.1" value="0.5" />
+    </label>
+    <button id="clearLayer" disabled>Clear Layer</button>
+    <div id="toggles"></div>
+  </div>
+  <div id="container"></div>
+
+  <script>
+    const canvasWidth = 1600;
+    const canvasHeight = 900;
+    const stage = new Konva.Stage({ container: 'container', width: canvasWidth, height: canvasHeight });
+    const bgLayer = new Konva.Layer();
+    stage.add(bgLayer);
+
+    let bgImageKonva;
+    const visits = {};
+    let activeLayer = null;
+    let isDrawing = false;
+
+    // Helper: draw a semi-transparent circle at x,y
+    function drawCircle(x, y, color, size, opacity) {
+      const circle = new Konva.Circle({
+        x,
+        y,
+        radius: size / 2,
+        fill: color,
+        opacity: opacity,
+        listening: false
+      });
+      activeLayer.add(circle);
+      activeLayer.batchDraw();
+    }
+
+    // Load background image
+    document.getElementById('bgInput').addEventListener('change', e => {
+      const file = e.target.files[0]; if (!file) return;
+      const reader = new FileReader();
+      reader.onload = evt => {
+        const imgObj = new Image(); imgObj.src = evt.target.result;
+        imgObj.onload = () => {
+          bgLayer.destroyChildren();
+          bgImageKonva = new Konva.Image({ image: imgObj, width: canvasWidth, height: canvasHeight, listening: false });
+          bgLayer.add(bgImageKonva);
+          stage.batchDraw();
+          document.getElementById('visitName').disabled = false;
+          document.getElementById('newVisit').disabled = false;
+        };
+      };
+      reader.readAsDataURL(file);
+    });
+
+    // Create new visit layer
+    document.getElementById('newVisit').addEventListener('click', () => {
+      const name = document.getElementById('visitName').value.trim();
+      if (!name) return alert('Enter a visit name.');
+      if (visits[name]) return alert('Layer exists.');
+      const layer = new Konva.Layer({ name });
+      visits[name] = layer;
+      stage.add(layer);
+      activeLayer = layer;
+      addToggle(name);
+      document.getElementById('clearLayer').disabled = false;
+      document.getElementById('visitName').value = '';
+    });
+
+    // Add toggle for layers
+    function addToggle(name) {
+      const container = document.getElementById('toggles');
+      const chk = document.createElement('input'); chk.type='checkbox'; chk.id='chk_'+name; chk.checked=true;
+      chk.addEventListener('change', () => { visits[name].visible(chk.checked); stage.batchDraw(); });
+      const lbl = document.createElement('label'); lbl.htmlFor=chk.id;
+      lbl.appendChild(chk); lbl.appendChild(document.createTextNode(' '+name));
+      container.appendChild(lbl);
+    }
+
+    // Drawing events: use circles for round nib with transparency
+    stage.on('mousedown touchstart', () => {
+      if (!activeLayer || !bgImageKonva) return;
+      isDrawing = true;
+      const pos = stage.getPointerPosition();
+      const color = document.getElementById('colorPicker').value;
+      const size = parseInt(document.getElementById('brushSize').value, 10);
+      const opacity = parseFloat(document.getElementById('opacityPicker').value);
+      drawCircle(pos.x, pos.y, color, size, opacity);
+    });
+
+    stage.on('mousemove touchmove', () => {
+      if (!isDrawing) return;
+      const pos = stage.getPointerPosition();
+      const color = document.getElementById('colorPicker').value;
+      const size = parseInt(document.getElementById('brushSize').value, 10);
+      const opacity = parseFloat(document.getElementById('opacityPicker').value);
+      drawCircle(pos.x, pos.y, color, size, opacity);
+    });
+
+    stage.on('mouseup touchend', () => {
+      isDrawing = false;
+    });
+
+    // Clear layer
+    document.getElementById('clearLayer').addEventListener('click', () => {
+      if (!activeLayer) return;
+      activeLayer.destroyChildren(); stage.batchDraw();
+    });
+  </script>
+</body>
+</html>
