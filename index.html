@@ -27,9 +27,11 @@
     </select>
     <button id="newVisit" disabled>New Visit Layer</button>
     <button id="deleteLayer" disabled>Delete Layer</button>
+    <button id="clearLayer" disabled>Clear Layer</button>
+    <button id="saveBtn" disabled>Save/Done</button>
+    <label>Filter: <select id="filterType"><option value="All">All</option><option value="Scabbling">Scabbling</option><option value="Hydroblast">Hydroblast</option><option value="Line Marking">Line Marking</option><option value="Sweeping">Sweeping</option><option value="Internal">Internal</option></select></label>
     <label>Color: <input type="color" id="colorPicker" value="#ff0000" /></label>
     <label>Brush size: <input type="number" id="brushSize" value="30" min="1" max="200" style="width:60px;" /></label>
-    <button id="clearLayer" disabled>Clear Layer</button>
     <button id="zoomIn">Zoom In</button>
     <button id="zoomOut">Zoom Out</button>
     <label>Zoom: <input type="range" id="zoomSlider" min="0.5" max="2" step="0.1" value="1" /></label>
@@ -40,14 +42,12 @@
   <script>
     // Setup Konva stage and layers
     const container = document.getElementById('stage-container');
-    const width = container.clientWidth;
-    const height = container.clientHeight;
-    const stage = new Konva.Stage({ container: 'stage-container', width, height });
+    const stage = new Konva.Stage({ container: 'stage-container', width: container.clientWidth, height: container.clientHeight });
     const bgLayer = new Konva.Layer();
     stage.add(bgLayer);
 
     let bgImage;
-    const visits = {};
+    const visits = {}; // { key: { layer, type } }
     let activeLayer = null;
     let drawing = false;
     let scale = 1;
@@ -56,11 +56,13 @@
     const newVisitBtn = document.getElementById('newVisit');
     const deleteLayerBtn = document.getElementById('deleteLayer');
     const clearLayerBtn = document.getElementById('clearLayer');
+    const saveBtn = document.getElementById('saveBtn');
+    const filterSelect = document.getElementById('filterType');
     const zoomInBtn = document.getElementById('zoomIn');
     const zoomOutBtn = document.getElementById('zoomOut');
     const zoomSlider = document.getElementById('zoomSlider');
 
-    // Helper: redraw stage scale
+    // Redraw stage scale
     function setScale(newScale) {
       scale = newScale;
       stage.scale({ x: scale, y: scale });
@@ -68,7 +70,6 @@
       zoomSlider.value = scale.toFixed(1);
     }
 
-    // Zoom controls
     zoomInBtn.addEventListener('click', () => setScale(Math.min(scale + 0.1, 2)));
     zoomOutBtn.addEventListener('click', () => setScale(Math.max(scale - 0.1, 0.5)));
     zoomSlider.addEventListener('input', e => setScale(parseFloat(e.target.value)));
@@ -81,10 +82,9 @@
         const imgObj = new Image(); imgObj.src = evt.target.result;
         imgObj.onload = () => {
           bgLayer.destroyChildren();
-          bgImage = new Konva.Image({ image: imgObj, width, height, listening: false });
+          bgImage = new Konva.Image({ image: imgObj, width: stage.width(), height: stage.height(), listening: false });
           bgLayer.add(bgImage);
           stage.batchDraw();
-          // enable visit inputs
           document.getElementById('visitName').disabled = false;
           document.getElementById('visitType').disabled = false;
           newVisitBtn.disabled = false;
@@ -95,80 +95,86 @@
 
     // Create new annotation layer
     newVisitBtn.addEventListener('click', () => {
-      const nameInput = document.getElementById('visitName');
-      const typeSelect = document.getElementById('visitType');
-      const name = nameInput.value.trim();
-      const type = typeSelect.value;
+      const name = document.getElementById('visitName').value.trim();
+      const type = document.getElementById('visitType').value;
       if (!name) return alert('Enter visit name');
       if (!type) return alert('Select polygon type');
-      const layerKey = `${name} [${type}]`;
-      if (visits[layerKey]) return alert('Layer exists for this visit and type');
-      const layer = new Konva.Layer({ name: layerKey });
+      const key = `${name} [${type}]`;
+      if (visits[key]) return alert('Layer exists');
+      const layer = new Konva.Layer({ name: key });
+      layer.visitType = type;
       stage.add(layer);
-      visits[layerKey] = layer;
+      visits[key] = { layer, type };
       activeLayer = layer;
-      addToggle(layerKey);
+      addToggle(key);
       clearLayerBtn.disabled = false;
       deleteLayerBtn.disabled = false;
-      nameInput.value = '';
-      typeSelect.value = '';
+      saveBtn.disabled = false;
+      document.getElementById('visitName').value = '';
+      document.getElementById('visitType').value = '';
     });
 
     // Delete current layer
     deleteLayerBtn.addEventListener('click', () => {
       if (!activeLayer) return;
-      const name = activeLayer.name();
-      // remove layer
+      const key = activeLayer.name();
       activeLayer.destroy();
-      delete visits[name];
-      // remove toggle
-      const lbl = document.getElementById(`lbl_${name}`);
-      if (lbl) lbl.parentNode.removeChild(lbl);
+      delete visits[key];
+      const lbl = document.getElementById(`lbl_${key}`);
+      if (lbl) lbl.remove();
       stage.batchDraw();
-      // reset activeLayer
       const keys = Object.keys(visits);
-      if (keys.length) {
-        activeLayer = visits[keys[keys.length - 1]];
-      } else {
-        activeLayer = null;
-        clearLayerBtn.disabled = true;
-        deleteLayerBtn.disabled = true;
-      }
+      if (keys.length) activeLayer = visits[keys[keys.length-1]].layer;
+      else { activeLayer = null; clearLayerBtn.disabled = true; deleteLayerBtn.disabled = true; saveBtn.disabled = true; }
     });
-
-    // Add toggle checkbox
-    function addToggle(name) {
-      const cont = document.getElementById('toggles');
-      const chk = document.createElement('input'); chk.type = 'checkbox'; chk.id = `chk_${name}`; chk.checked = true;
-      chk.onchange = () => { visits[name].visible(chk.checked); stage.batchDraw(); };
-      const lbl = document.createElement('label'); lbl.htmlFor = chk.id; lbl.id = `lbl_${name}`;
-      lbl.appendChild(chk); lbl.appendChild(document.createTextNode(' ' + name));
-      cont.appendChild(lbl);
-    }
-
-    // Drawing events
-    stage.on('mousedown touchstart', () => {
-      if (!activeLayer || !bgImage) return;
-      drawing = true; drawPoint();
-    });
-    stage.on('mousemove touchmove', () => { if (drawing) drawPoint(); });
-    stage.on('mouseup touchend', () => { drawing = false; });
-
-    function drawPoint() {
-      const pos = stage.getPointerPosition();
-      const color = document.getElementById('colorPicker').value;
-      const size = parseInt(document.getElementById('brushSize').value, 10);
-      const circle = new Konva.Circle({ x: pos.x, y: pos.y, radius: size / 2, fill: color, listening: false });
-      activeLayer.add(circle);
-      stage.batchDraw();
-    }
 
     // Clear layer
     clearLayerBtn.addEventListener('click', () => {
       if (activeLayer) { activeLayer.destroyChildren(); stage.batchDraw(); }
     });
 
-    // Initialize scale slider value
+    // Save/DONE logic (persist JSON via Dataverse hook)
+    saveBtn.addEventListener('click', async () => {
+      const payload = stage.toJSON();
+      try { await saveToDataverse(payload); alert('Saved'); }
+      catch { alert('Save error'); }
+    });
+
+    // Filter by type
+    filterSelect.addEventListener('change', () => {
+      const filter = filterSelect.value;
+      Object.entries(visits).forEach(([key, obj]) => {
+        const visible = filter === 'All' || obj.type === filter;
+        obj.layer.visible(visible);
+        const chk = document.getElementById(`chk_${key}`);
+        if (chk) chk.checked = visible;
+      });
+      stage.batchDraw();
+    });
+
+    // Add toggle checkbox
+    function addToggle(key) {
+      const cont = document.getElementById('toggles');
+      const chk = document.createElement('input'); chk.type = 'checkbox'; chk.id = `chk_${key}`; chk.checked = true;
+      chk.onchange = () => { visits[key].layer.visible(chk.checked); stage.batchDraw(); };
+      const lbl = document.createElement('label'); lbl.htmlFor = chk.id; lbl.id = `lbl_${key}`;
+      lbl.appendChild(chk); lbl.appendChild(document.createTextNode(' ' + key));
+      cont.appendChild(lbl);
+    }
+
+    // Drawing events
+    stage.on('mousedown touchstart', () => { if (activeLayer && bgImage) { drawing = true; drawPoint(); } });
+    stage.on('mousemove touchmove', () => { if (drawing) drawPoint(); });
+    stage.on('mouseup touchend', () => { drawing = false; });
+
+    function drawPoint() {
+      const pos = stage.getPointerPosition();
+      const circle = new Konva.Circle({ x: pos.x, y: pos.y, radius: parseInt(document.getElementById('brushSize').value)/2, fill: document.getElementById('colorPicker').value, listening: false });
+      activeLayer.add(circle);
+      stage.batchDraw();
+    }
+
+    // Initialize
     setScale(1);
   </script>
 </body>
