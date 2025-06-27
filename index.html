@@ -26,6 +26,7 @@
       <option value="Internal">Internal</option>
     </select>
     <button id="newVisit" disabled>New Visit Layer</button>
+    <button id="deleteLayer" disabled>Delete Layer</button>
     <label>Color: <input type="color" id="colorPicker" value="#ff0000" /></label>
     <label>Brush size: <input type="number" id="brushSize" value="30" min="1" max="200" style="width:60px;" /></label>
     <button id="clearLayer" disabled>Clear Layer</button>
@@ -51,6 +52,14 @@
     let drawing = false;
     let scale = 1;
 
+    // Controls
+    const newVisitBtn = document.getElementById('newVisit');
+    const deleteLayerBtn = document.getElementById('deleteLayer');
+    const clearLayerBtn = document.getElementById('clearLayer');
+    const zoomInBtn = document.getElementById('zoomIn');
+    const zoomOutBtn = document.getElementById('zoomOut');
+    const zoomSlider = document.getElementById('zoomSlider');
+
     // Helper: redraw stage scale
     function setScale(newScale) {
       scale = newScale;
@@ -60,10 +69,6 @@
     }
 
     // Zoom controls
-    const zoomInBtn = document.getElementById('zoomIn');
-    const zoomOutBtn = document.getElementById('zoomOut');
-    const zoomSlider = document.getElementById('zoomSlider');
-
     zoomInBtn.addEventListener('click', () => setScale(Math.min(scale + 0.1, 2)));
     zoomOutBtn.addEventListener('click', () => setScale(Math.max(scale - 0.1, 0.5)));
     zoomSlider.addEventListener('input', e => setScale(parseFloat(e.target.value)));
@@ -82,16 +87,18 @@
           // enable visit inputs
           document.getElementById('visitName').disabled = false;
           document.getElementById('visitType').disabled = false;
-          document.getElementById('newVisit').disabled = false;
+          newVisitBtn.disabled = false;
         };
       };
       reader.readAsDataURL(file);
     });
 
     // Create new annotation layer
-    document.getElementById('newVisit').addEventListener('click', () => {
-      const name = document.getElementById('visitName').value.trim();
-      const type = document.getElementById('visitType').value;
+    newVisitBtn.addEventListener('click', () => {
+      const nameInput = document.getElementById('visitName');
+      const typeSelect = document.getElementById('visitType');
+      const name = nameInput.value.trim();
+      const type = typeSelect.value;
       if (!name) return alert('Enter visit name');
       if (!type) return alert('Select polygon type');
       const layerKey = `${name} [${type}]`;
@@ -101,9 +108,32 @@
       visits[layerKey] = layer;
       activeLayer = layer;
       addToggle(layerKey);
-      document.getElementById('clearLayer').disabled = false;
-      document.getElementById('visitName').value = '';
-      document.getElementById('visitType').value = '';
+      clearLayerBtn.disabled = false;
+      deleteLayerBtn.disabled = false;
+      nameInput.value = '';
+      typeSelect.value = '';
+    });
+
+    // Delete current layer
+    deleteLayerBtn.addEventListener('click', () => {
+      if (!activeLayer) return;
+      const name = activeLayer.name();
+      // remove layer
+      activeLayer.destroy();
+      delete visits[name];
+      // remove toggle
+      const lbl = document.getElementById(`lbl_${name}`);
+      if (lbl) lbl.parentNode.removeChild(lbl);
+      stage.batchDraw();
+      // reset activeLayer
+      const keys = Object.keys(visits);
+      if (keys.length) {
+        activeLayer = visits[keys[keys.length - 1]];
+      } else {
+        activeLayer = null;
+        clearLayerBtn.disabled = true;
+        deleteLayerBtn.disabled = true;
+      }
     });
 
     // Add toggle checkbox
@@ -111,7 +141,7 @@
       const cont = document.getElementById('toggles');
       const chk = document.createElement('input'); chk.type = 'checkbox'; chk.id = `chk_${name}`; chk.checked = true;
       chk.onchange = () => { visits[name].visible(chk.checked); stage.batchDraw(); };
-      const lbl = document.createElement('label'); lbl.htmlFor = chk.id;
+      const lbl = document.createElement('label'); lbl.htmlFor = chk.id; lbl.id = `lbl_${name}`;
       lbl.appendChild(chk); lbl.appendChild(document.createTextNode(' ' + name));
       cont.appendChild(lbl);
     }
@@ -134,7 +164,7 @@
     }
 
     // Clear layer
-    document.getElementById('clearLayer').addEventListener('click', () => {
+    clearLayerBtn.addEventListener('click', () => {
       if (activeLayer) { activeLayer.destroyChildren(); stage.batchDraw(); }
     });
 
