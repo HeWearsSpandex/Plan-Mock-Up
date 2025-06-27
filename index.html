@@ -16,8 +16,9 @@
 <body>
   <div id="controls">
     <input type="file" id="bgInput" accept="image/*" />
+    <input id="visitName" placeholder="Visit name (e.g. 2025-06-26)" disabled />
     <select id="visitType" disabled>
-      <option value="">Select visit type</option>
+      <option value="">Select polygon type</option>
       <option value="Scabbling">Scabbling</option>
       <option value="Hydroblast">Hydroblast</option>
       <option value="Line Marking">Line Marking</option>
@@ -78,6 +79,8 @@
           bgImage = new Konva.Image({ image: imgObj, width, height, listening: false });
           bgLayer.add(bgImage);
           stage.batchDraw();
+          // enable visit inputs
+          document.getElementById('visitName').disabled = false;
           document.getElementById('visitType').disabled = false;
           document.getElementById('newVisit').disabled = false;
         };
@@ -87,15 +90,20 @@
 
     // Create new annotation layer
     document.getElementById('newVisit').addEventListener('click', () => {
-      const name = document.getElementById('visitType').value;
-      if (!name) return alert('Select a visit type');
-      if (visits[name]) return alert('Layer exists for this type');
-      const layer = new Konva.Layer({ name });
+      const name = document.getElementById('visitName').value.trim();
+      const type = document.getElementById('visitType').value;
+      if (!name) return alert('Enter visit name');
+      if (!type) return alert('Select polygon type');
+      const layerKey = `${name} [${type}]`;
+      if (visits[layerKey]) return alert('Layer exists for this visit and type');
+      const layer = new Konva.Layer({ name: layerKey });
       stage.add(layer);
-      visits[name] = layer;
+      visits[layerKey] = layer;
       activeLayer = layer;
-      addToggle(name);
+      addToggle(layerKey);
       document.getElementById('clearLayer').disabled = false;
+      document.getElementById('visitName').value = '';
+      document.getElementById('visitType').value = '';
     });
 
     // Add toggle checkbox
